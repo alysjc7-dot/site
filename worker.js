@@ -1,12 +1,12 @@
 /**
  * ============================================================================
- * Cloudflare Worker - M3U8 Master Control & Forced Stream Engine v12.1
- * Architecture: Enterprise Clean Code, Direct Server-Side Stream Parser & High Reliability
+ * Cloudflare Worker - M3U8 Master Control & Forced Stream Engine v12.2
+ * Fixed Mobile File Upload & Advanced Stream Management
  * ============================================================================
  */
 
 const CONFIG = {
-  VERSION: "12.1.0",
+  VERSION: "12.2.0",
   ENGINE_NAME: "M3U8 Absolute Forced Control Engine",
   ADMIN_PASSWORD: "kidn5420",
   TEMP_CHANNEL_NAME: "rights",
@@ -86,113 +86,154 @@ class KVStorageManager {
 }
 
 /**
- * محلل ملفات الـ M3U الخارق (يعمل مباشرة على مستوى السيرفر)
+ * محلل ملفات الـ M3U الخارق - محسّن للهواتف الذكية
  */
 class ServerM3UParser {
   static async parseMultipartFile(request) {
     try {
       const contentType = request.headers.get('content-type') || '';
+      console.log('📌 Content-Type:', contentType);
       
-      if (!contentType.includes('multipart/form-data')) {
+      // محاولة الحصول على formData بغض النظر عن نوع المحتوى
+      let formData;
+      try {
+        formData = await request.formData();
+      } catch (e) {
+        console.error('❌ خطأ في قراءة formData:', e);
         return { 
           channels: {}, 
-          originalUrls: {}, 
           count: 0, 
-          error: "نوع المحتوى غير صحيح. يجب أن يكون multipart/form-data" 
+          error: `فشل قراءة الملف: ${e.message}` 
         };
       }
 
-      const formData = await request.formData();
-      const file = formData.get('m3u_file');
+      // محاولة الحصول على الملف بعدة أسماء محتملة
+      let file = formData.get('m3u_file') || formData.get('file') || formData.get('upload');
+      
+      console.log('📦 File received:', file ? `${file.name} (${file.size} bytes)` : 'None');
       
       if (!file) {
+        console.warn('⚠️ لم يتم استقبال أي ملف');
         return { 
           channels: {}, 
-          originalUrls: {}, 
           count: 0, 
-          error: "لم يتم اختيار ملف" 
+          error: "❌ لم يتم اختيار ملف. تأكد من اختيار ملف M3U أو M3U8" 
         };
       }
 
-      if (typeof file.text !== 'function') {
+      // التحقق من نوع الملف
+      const fileName = file.name.toLowerCase();
+      const validExtensions = ['.m3u', '.m3u8', '.txt'];
+      const hasValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
+      
+      if (!hasValidExtension && !fileName.includes('m3u')) {
+        console.warn('⚠️ نوع الملف غير صحيح:', fileName);
         return { 
           channels: {}, 
-          originalUrls: {}, 
           count: 0, 
-          error: "الملف المرفوع غير صحيح أو تالف" 
+          error: `❌ نوع الملف غير صحيح: ${fileName}. استخدم ملفات .m3u أو .m3u8` 
         };
       }
 
-      const fileText = await file.text();
+      // قراءة محتوى الملف
+      let fileText = '';
+      try {
+        fileText = await file.text();
+      } catch (e) {
+        console.error('❌ خطأ في قراءة محتوى الملف:', e);
+        return { 
+          channels: {}, 
+          count: 0, 
+          error: `فشل قراءة محتوى الملف: ${e.message}` 
+        };
+      }
+      
+      console.log(`📄 File size: ${fileText.length} characters`);
       
       if (!fileText || fileText.trim().length === 0) {
         return { 
           channels: {}, 
-          originalUrls: {}, 
           count: 0, 
-          error: "الملف فارغ" 
+          error: "❌ الملف فارغ تماماً" 
         };
       }
 
+      // معالجة محتوى الملف
       const lines = fileText.split(/\r?\n/);
       const channels = {};
-      const originalUrls = {}; // حفظ الروابط الأصلية
       let currentName = "";
-      let currentUrl = "";
       let count = 0;
+      let debugInfo = [];
+
+      console.log(`📋 Processing ${lines.length} lines...`);
 
       for (let i = 0; i < lines.length; i++) {
         const rawLine = lines[i];
         const line = rawLine.trim();
         
+        // تخطي الأسطر الفارغة
         if (!line) continue;
 
         // معالجة سطر معلومات القناة
-        if (line.startsWith("#EXTINF:")) {
-          // استخراج اسم القناة من السطر
+        if (line.startsWith("#EXTINF:") || line.startsWith("#extinf:")) {
+          // استخراج اسم القناة
           const parts = line.split(',');
           if (parts.length > 1) {
             currentName = parts.slice(1).join(',').trim();
-            // تنظيف اسم القناة من الأحرف غير المرغوبة
-            currentName = currentName.replace(/[\n\r]/g, '').trim();
+            // تنظيف الأحرف غير المرغوبة
+            currentName = currentName.replace(/[\n\r\t]/g, '').trim();
+            
+            // تخطي الأسطر الفارغة جداً
+            if (currentName.length > 2) {
+              debugInfo.push(`✓ Channel found: ${currentName}`);
+            }
           }
         } 
         // تخطي أسطر التعليقات الأخرى
         else if (line.startsWith("#")) {
           continue;
         } 
-        // معالجة رابط القناة (يجب أن يكون URL صحيح)
-        else if (currentName && (line.startsWith('http://') || line.startsWith('https://') || line.startsWith('rtmp') || line.startsWith('/'))) {
-          currentUrl = line;
+        // معالجة رابط القناة
+        else if (currentName && currentName.length > 2) {
+          // التحقق من أن السطر يبدو برابط
+          const trimmedUrl = line.trim();
           
-          // التحقق من صحة الرابط
-          if (currentUrl && currentUrl.length > 0) {
-            channels[currentName] = currentUrl; // الرابط الموجه للمستخدم
-            originalUrls[currentName] = currentUrl; // حفظ الرابط الأصلي
+          // قبول أي رابط يبدو صحيحاً
+          if (trimmedUrl && (
+            trimmedUrl.startsWith('http://') || 
+            trimmedUrl.startsWith('https://') || 
+            trimmedUrl.startsWith('rtmp') ||
+            trimmedUrl.startsWith('udp://') ||
+            trimmedUrl.startsWith('/') ||
+            trimmedUrl.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//) // أي URI scheme
+          )) {
+            channels[currentName] = trimmedUrl;
             count++;
+            debugInfo.push(`  ↳ URL: ${trimmedUrl.substring(0, 50)}...`);
             currentName = "";
-            currentUrl = "";
           }
         }
       }
 
       if (count === 0) {
+        console.warn('⚠️ لم يتم العثور على قنوات صحيحة');
         return { 
           channels: {}, 
-          originalUrls: {}, 
           count: 0, 
-          error: "لم يتم العثور على أي قنوات صحيحة في الملف" 
+          error: `❌ لم يتم العثور على قنوات صحيحة في الملف. تأكد من صيغة الملف (يجب أن يحتوي على #EXTINF ثم الرابط في السطر التالي)` 
         };
       }
 
-      return { channels, originalUrls, count, error: null };
+      console.log(`✅ Successfully parsed ${count} channels`);
+      console.log('Debug Info:', debugInfo.slice(0, 5).join('\n'));
+
+      return { channels, count, error: null };
     } catch (e) {
-      console.error('Parse error:', e);
+      console.error('❌ Parse error:', e);
       return { 
         channels: {}, 
-        originalUrls: {}, 
         count: 0, 
-        error: `خطأ في معالجة الملف: ${e.message}` 
+        error: `❌ خطأ حرج في معالجة الملف: ${e.message}` 
       };
     }
   }
@@ -235,7 +276,7 @@ export default {
     // 3. مسارات التحكم والإدارة
     if (path === "/clear-all") {
       await kvManager.purgeAll();
-      return new Response("تم حذف جميع البيانات بنجاح", { 
+      return new Response("✅ تم حذف جميع البيانات بنجاح", { 
         status: 200,
         headers: { 
           "Content-Type": "text/plain; charset=utf-8",
@@ -260,7 +301,7 @@ export default {
       return await this.handleAdminDashboard(request, env, url, kvManager);
     }
 
-    return new Response("Not Found", { status: 404, headers: { "Access-Control-Allow-Origin": "*" } });
+    return new Response("❌ Not Found", { status: 404, headers: { "Access-Control-Allow-Origin": "*" } });
   },
 
   async extractPassword(request) {
@@ -290,7 +331,6 @@ export default {
     try {
       const channels = await kvManager.getChannels();
       
-      // إذا كانت القنوات فارغة
       if (Object.keys(channels).length === 0) {
         return new Response('#EXTM3U\n# لا توجد قنوات مسجلة\n', {
           headers: {
@@ -302,8 +342,7 @@ export default {
       }
 
       let m3uContent = '#EXTM3U\n';
-      for (const [name, url_value] of Object.entries(channels)) {
-        // الروابط تمر عبر النظام - كل رابط يمر عبر /[اسم_القناة]/playlist.m3u8
+      for (const [name] of Object.entries(channels)) {
         m3uContent += `#EXTINF:-1,${name}\n`;
         m3uContent += `https://${url.host}/${encodeURIComponent(name)}/playlist.m3u8\n`;
         m3uContent += '\n';
@@ -319,7 +358,7 @@ export default {
       });
     } catch (error) {
       console.error('Export error:', error);
-      return new Response("خطأ في تصدير الملف", { 
+      return new Response("❌ خطأ في تصدير الملف", { 
         status: 500, 
         headers: { "Access-Control-Allow-Origin": "*" } 
       });
@@ -343,7 +382,6 @@ export default {
         });
       }
 
-      // إنشاء ملف M3U يوجه إلى الرابط الأصلي
       const staticM3uContent = `#EXTM3U
 #EXT-X-VERSION:3
 #EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720
@@ -361,7 +399,7 @@ ${realTargetUrl}
       });
     } catch (error) {
       console.error('Playlist stream error:', error);
-      return new Response("خطأ في معالجة البث", { 
+      return new Response("❌ خطأ في معالجة البث", { 
         status: 500, 
         headers: { "Access-Control-Allow-Origin": "*" } 
       });
@@ -372,13 +410,11 @@ ${realTargetUrl}
     try {
       const currentChannels = await kvManager.getChannels();
       
-      // حفظ النسخة الأصلية
       const backupSaved = await kvManager.setBackup(currentChannels);
       if (!backupSaved) {
         return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=فشل+حفظ+النسخة+الاحتياطية`, 302);
       }
       
-      // تبديل الروابط بالرابط المؤقت
       const tempChannels = {};
       for (const [name] of Object.entries(currentChannels)) {
         tempChannels[name] = CONFIG.TEMP_CHANNEL_URL;
@@ -390,7 +426,7 @@ ${realTargetUrl}
         return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=فشل+تحديث+القنوات`, 302);
       }
       
-      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+تفعيل+وضع+الحقوق`, 302);
+      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+تفعيل+وضع+الحقوق+بنجاح`, 302);
     } catch (e) {
       console.error('Enable rights error:', e);
       return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=خطأ+في+تفعيل+وضع+الحقوق`, 302);
@@ -410,7 +446,7 @@ ${realTargetUrl}
       }
       
       await kvManager.clearBackup();
-      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+استعادة+القنوات+الأصلية`, 302);
+      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+استعادة+القنوات+الأصلية+بنجاح`, 302);
     } catch (e) {
       console.error('Restore channels error:', e);
       return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=خطأ+في+الاستعادة`, 302);
@@ -419,15 +455,17 @@ ${realTargetUrl}
 
   async handleForcedImport(request, kvManager, url) {
     try {
-      const { channels, originalUrls, count, error } = await ServerM3UParser.parseMultipartFile(request);
+      console.log('🔄 Starting M3U import...');
+      const { channels, count, error } = await ServerM3UParser.parseMultipartFile(request);
       
       if (error) {
+        console.error('Parse error returned:', error);
         const errMsg = encodeURIComponent(error);
         return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=${errMsg}`, 302);
       }
 
       if (count === 0) {
-        return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=لم+يتم+استيراد+أي+قنوات`, 302);
+        return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=لم+يتم+استيراد+أي+قنوات+صحيحة`, 302);
       }
 
       // دمج القنوات الجديدة مع الموجودة
@@ -436,13 +474,14 @@ ${realTargetUrl}
       
       const saved = await kvManager.saveChannels(merged);
       if (!saved) {
-        return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=فشل+حفظ+البيانات`, 302);
+        return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=فشل+حفظ+البيانات+في+النظام`, 302);
       }
       
-      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+استيراد+${count}+قناة+بنجاح`, 302);
+      console.log(`✅ Successfully imported ${count} channels`);
+      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+استيراد+${count}+قناة+بنجاح!`, 302);
     } catch (e) {
       console.error('Import error:', e);
-      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=خطأ+في+الاستيراد:+${encodeURIComponent(e.message)}`, 302);
+      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=خطأ+حرج+في+الاستيراد`, 302);
     }
   },
 
@@ -542,7 +581,7 @@ ${realTargetUrl}
       return new Response(`<!DOCTYPE html>
       <html lang="ar" dir="rtl">
       <head>
-        <title>لوحة التحكم الاحترافية - قنوات البث</title>
+        <title>لوحة التحكم - قنوات البث</title>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
@@ -566,7 +605,7 @@ ${realTargetUrl}
           .form-inline{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
           .form-inline input[type="text"], .form-inline input[type="url"]{flex:1 1 220px;padding:11px 16px;border-radius:8px;border:1px solid #1f2a40;background:#060911;color:#fff;font-size:13px}
           .form-inline input[type="url"]{flex:2 1 320px}
-          .file-upload-box{display:flex;gap:12px;align-items:center;flex:2;background:#060911;padding:8px 12px;border:1px solid #1f2a40;border-radius:8px;}
+          .file-upload-box{display:flex;gap:12px;align-items:center;flex:2;background:#060911;padding:8px 12px;border:1px dashed #1f2a40;border-radius:8px;}
           .file-upload-box input[type="file"]{color:#8b949e;font-size:13px;width:100%;cursor:pointer;}
           .table-wrapper{overflow-x:auto;margin:20px 0;border-radius:10px;border:1px solid #1a2336}
           table{width:100%;border-collapse:collapse;font-size:13px;min-width:550px}
@@ -582,13 +621,14 @@ ${realTargetUrl}
           .stat-number{font-size:24px;font-weight:600;color:#3fb950}
           .stat-label{font-size:11px;color:#8b949e;margin-top:4px}
           code{background:#060911;padding:2px 6px;border-radius:4px;color:#79c0ff;font-size:11px}
+          .instructions{background:#111827;padding:12px;border-radius:8px;border-left:4px solid #1f6feb;font-size:12px;color:#8b949e;margin-bottom:12px}
         </style>
       </head>
       <body>
       <div class="container">
         <div class="header">
-          <h2>⚙️ لوحة التحكم المركزية (${CONFIG.VERSION})</h2>
-          <a href="/admin?logout=true&password=${CONFIG.ADMIN_PASSWORD}" class="btn btn-logout">🚪 تسجيل الخروج</a>
+          <h2>⚙️ لوحة التحكم (${CONFIG.VERSION})</h2>
+          <a href="/admin?logout=true&password=${CONFIG.ADMIN_PASSWORD}" class="btn btn-logout">🚪 خروج</a>
         </div>
         
         ${url.searchParams.get('success') ? `<div class="success">✅ ${url.searchParams.get('success')}</div>` : ''}
@@ -603,39 +643,41 @@ ${realTargetUrl}
             <div class="stat-number">${isTempMode ? '🔴' : '🟢'}</div>
             <div class="stat-label">${isTempMode ? 'وضع الحقوق' : 'وضع عادي'}</div>
           </div>
-          <div class="stat-item">
-            <div class="stat-number">${CONFIG.VERSION}</div>
-            <div class="stat-label">إصدار المحرك</div>
-          </div>
         </div>
         
         <div class="toolbar">
           <span style="font-weight:500;font-size:13px;color:#8b949e;">🚨 وضع الطوارئ:</span>
-          <a href="/enable-rights?password=${CONFIG.ADMIN_PASSWORD}" onclick="return confirm('تفعيل رابط الحقوق؟ سيتم حفظ القنوات الحالية')" class="btn btn-warning btn-sm" style="${isTempMode ? 'opacity:0.4;pointer-events:none;' : ''}">⚠️ تفعيل رابط الحقوق</a>
-          <a href="/restore-channels?password=${CONFIG.ADMIN_PASSWORD}" onclick="return confirm('استعادة القنوات الأصلية؟')" class="btn btn-info btn-sm" style="${!isTempMode ? 'opacity:0.4;pointer-events:none;' : ''}">♻️ استعادة القنوات</a>
-          ${isTempMode ? `<span class="badge">🔒 وضع الحقوق مفعل</span>` : ''}
+          <a href="/enable-rights?password=${CONFIG.ADMIN_PASSWORD}" onclick="return confirm('تفعيل وضع الحقوق؟')" class="btn btn-warning btn-sm" style="${isTempMode ? 'opacity:0.4;pointer-events:none;' : ''}">⚠️ تفعيل</a>
+          <a href="/restore-channels?password=${CONFIG.ADMIN_PASSWORD}" onclick="return confirm('استعادة القنوات الأصلية؟')" class="btn btn-info btn-sm" style="${!isTempMode ? 'opacity:0.4;pointer-events:none;' : ''}">♻️ استعادة</a>
+          ${isTempMode ? `<span class="badge">🔒 مفعل</span>` : ''}
         </div>
 
         <div class="form-box" style="background:#161b22;">
-          <h3>📁 استيراد ملف M3U إجباري (مباشر عبر السيرفر)</h3>
+          <h3>📁 استيراد ملف M3U8 / M3U</h3>
+          <div class="instructions">
+            💡 <strong>تعليمات الاستيراد من الهاتف:</strong><br>
+            1️⃣ اختر ملف M3U أو M3U8 من الهاتف<br>
+            2️⃣ تأكد من أن الملف يحتوي على #EXTINF و الروابط<br>
+            3️⃣ اضغط "رفع واستيراد"
+          </div>
           <form method="POST" action="/forced-import-m3u" enctype="multipart/form-data" class="form-inline">
             <input type="hidden" name="password" value="${CONFIG.ADMIN_PASSWORD}">
             <div class="file-upload-box">
-              <input type="file" name="m3u_file" accept=".m3u,.m3u8" required ${isTempMode ? 'disabled' : ''}>
+              <input type="file" name="m3u_file" accept=".m3u,.m3u8,.txt" required ${isTempMode ? 'disabled' : ''} onchange="showFileName(this)">
             </div>
-            <button type="submit" class="btn btn-info" ${isTempMode ? 'disabled' : ''}>📤 رفع واستيراد</button>
+            <button type="submit" class="btn btn-info" ${isTempMode ? 'disabled' : ''}>📤 رفع</button>
           </form>
-          <p style="font-size:11px;color:#8b949e;margin-top:8px;">💡 الملف يجب أن يحتوي على روابط صحيحة بصيغة M3U8 أو M3U</p>
+          <p style="font-size:11px;color:#8b949e;margin-top:8px;" id="fileName"></p>
         </div>
 
         <div class="form-box">
-          <h3 id="formTitle">➕ إضافة قناة فردية يدوياً</h3>
+          <h3 id="formTitle">➕ إضافة قناة يدوياً</h3>
           <form method="GET" action="/admin" class="form-inline" id="channelForm">
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="password" value="${CONFIG.ADMIN_PASSWORD}">
             <input type="hidden" name="old_name" id="old_name">
-            <input type="text" name="channel_name" id="channel_name" placeholder="اسم القناة (مثال: AL JAZEERA)" required ${isTempMode ? 'disabled' : ''}>
-            <input type="url" name="channel_url" id="channel_url" placeholder="رابط M3U8 الأصلي الكامل (https://...)" required ${isTempMode ? 'disabled' : ''}>
+            <input type="text" name="channel_name" id="channel_name" placeholder="اسم القناة" required ${isTempMode ? 'disabled' : ''}>
+            <input type="url" name="channel_url" id="channel_url" placeholder="https://..." required ${isTempMode ? 'disabled' : ''}>
             <button type="submit" id="submitBtn" class="btn btn-primary" ${isTempMode ? 'disabled' : ''}>➕ إضافة</button>
             <button type="button" onclick="resetForm()" id="cancelBtn" class="btn btn-logout" style="display:none;">❌ إلغاء</button>
           </form>
@@ -645,9 +687,9 @@ ${realTargetUrl}
           <table>
             <thead>
               <tr>
-                <th style="text-align:right;">📺 اسم القناة</th>
-                <th style="text-align:right;">🔗 رابط البث الأصلي</th>
-                <th style="width:140px;text-align:center;">⚙️ الإجراء</th>
+                <th>📺 اسم القناة</th>
+                <th>🔗 رابط البث</th>
+                <th style="width:140px;text-align:center;">⚙️</th>
               </tr>
             </thead>
             <tbody>
@@ -657,47 +699,41 @@ ${realTargetUrl}
         </div>
 
         <div class="footer-links">
-          <div>🔗 <strong>رابط التشغيل الثابت:</strong> <code>https://${url.host}/[اسم_القناة]/playlist.m3u8</code></div>
-          <div>📥 <a href="/export-m3u?password=${CONFIG.ADMIN_PASSWORD}">⬇️ تحميل ملف M3U المعدل</a></div>
-          <div>💚 <a href="/health" target="_blank">🏥 فحص صحة النظام</a></div>
+          <div>📥 <a href="/export-m3u?password=${CONFIG.ADMIN_PASSWORD}">⬇️ تحميل M3U المعدل</a></div>
+          <div>🏥 <a href="/health" target="_blank">فحص النظام</a></div>
         </div>
       </div>
 
       <script>
+        function showFileName(input) {
+          const fileName = input.files[0]?.name || '';
+          document.getElementById('fileName').textContent = fileName ? '✓ تم اختيار: ' + fileName : '';
+        }
+
         function editChannel(name, urlLink) {
           document.getElementById('old_name').value = name;
           document.getElementById('channel_name').value = name;
           document.getElementById('channel_url').value = urlLink;
-          document.getElementById('formTitle').innerText = '✏️ تعديل بيانات القناة';
-          document.getElementById('submitBtn').innerText = '💾 حفظ التعديل';
+          document.getElementById('formTitle').innerText = '✏️ تعديل';
+          document.getElementById('submitBtn').innerText = '💾 حفظ';
           document.getElementById('cancelBtn').style.display = 'inline-flex';
-          window.scrollTo({top: 350, behavior: 'smooth'});
+          window.scrollTo({top: 400, behavior: 'smooth'});
         }
         
         function resetForm() {
           document.getElementById('old_name').value = '';
           document.getElementById('channel_name').value = '';
           document.getElementById('channel_url').value = '';
-          document.getElementById('formTitle').innerText = '➕ إضافة قناة فردية يدوياً';
+          document.getElementById('formTitle').innerText = '➕ إضافة قناة يدوياً';
           document.getElementById('submitBtn').innerText = '➕ إضافة';
           document.getElementById('cancelBtn').style.display = 'none';
         }
-
-        // التحقق من صحة الرابط أثناء الكتابة
-        document.getElementById('channel_url').addEventListener('change', function() {
-          try {
-            new URL(this.value);
-            this.style.borderColor = '#238636';
-          } catch(e) {
-            this.style.borderColor = '#f85149';
-          }
-        });
       </script>
       </body>
       </html>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
     } catch (error) {
       console.error('Dashboard error:', error);
-      return new Response("خطأ في تحميل لوحة التحكم", { 
+      return new Response("❌ خطأ في تحميل لوحة التحكم", { 
         status: 500,
         headers: { "Content-Type": "text/plain; charset=utf-8" }
       });
