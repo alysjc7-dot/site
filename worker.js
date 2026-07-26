@@ -1,12 +1,12 @@
 /**
  * ============================================================================
- * Cloudflare Worker - M3U8 Master Control Engine v12.5 ULTIMATE
- * Supreme File Upload Handler - Enterprise Grade
+ * Cloudflare Worker - M3U8 Master Control Engine v13.0 ULTIMATE PRO
+ * Professional Enterprise Grade - Mobile Optimized
  * ============================================================================
  */
 
 const CONFIG = {
-  VERSION: "12.5.0",
+  VERSION: "13.0.0",
   ENGINE_NAME: "M3U8 Absolute Forced Control Engine",
   ADMIN_PASSWORD: "kidn5420",
   TEMP_CHANNEL_NAME: "rights",
@@ -26,7 +26,7 @@ class KVStorageManager {
       const data = await this.kv.get('channels_data', 'json');
       return data && typeof data === 'object' ? data : {};
     } catch (error) {
-      console.error('❌ Error getting channels:', error);
+      console.error('Error getting channels:', error);
       return {};
     }
   }
@@ -36,7 +36,7 @@ class KVStorageManager {
       await this.kv.put('channels_data', JSON.stringify(channels));
       return true;
     } catch (error) {
-      console.error('❌ Error saving channels:', error);
+      console.error('Error saving channels:', error);
       return false;
     }
   }
@@ -45,7 +45,7 @@ class KVStorageManager {
     try {
       return await this.kv.get('backup_channels', 'json');
     } catch (error) {
-      console.error('❌ Error getting backup:', error);
+      console.error('Error getting backup:', error);
       return null;
     }
   }
@@ -55,7 +55,7 @@ class KVStorageManager {
       await this.kv.put('backup_channels', JSON.stringify(channels));
       return true;
     } catch (error) {
-      console.error('❌ Error setting backup:', error);
+      console.error('Error setting backup:', error);
       return false;
     }
   }
@@ -65,7 +65,7 @@ class KVStorageManager {
       await this.kv.delete('backup_channels');
       return true;
     } catch (error) {
-      console.error('❌ Error clearing backup:', error);
+      console.error('Error clearing backup:', error);
       return false;
     }
   }
@@ -76,7 +76,7 @@ class KVStorageManager {
       await this.kv.delete('backup_channels');
       return true;
     } catch (error) {
-      console.error('❌ Error purging all:', error);
+      console.error('Error purging all:', error);
       return false;
     }
   }
@@ -85,13 +85,10 @@ class KVStorageManager {
 class ServerM3UParser {
   static async parseMultipartFile(request) {
     try {
-      console.log('🔄 Starting parse...');
-      
       let formData;
       try {
         formData = await request.formData();
       } catch (e) {
-        console.error('❌ formData error:', e);
         return { channels: {}, count: 0, error: `فشل قراءة الملف: ${e.message}` };
       }
 
@@ -149,12 +146,12 @@ class ServerM3UParser {
       }
 
       if (count === 0) {
-        return { channels: {}, count: 0, error: "لم يتم العثور على قنوات صحيحة" };
+        return { channels: {}, count: 0, error: "لم يتم العثور على قنوات صحيحة في الملف" };
       }
 
       return { channels, count, error: null };
     } catch (e) {
-      console.error('❌ Parse error:', e);
+      console.error('Parse error:', e);
       return { channels: {}, count: 0, error: `خطأ: ${e.message}` };
     }
   }
@@ -194,7 +191,7 @@ export default {
 
     if (path === "/clear-all") {
       await kvManager.purgeAll();
-      return new Response("✅ تم حذف جميع البيانات", { 
+      return new Response("تم حذف جميع البيانات", { 
         status: 200,
         headers: { "Content-Type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" }
       });
@@ -220,7 +217,7 @@ export default {
       return await this.handleAdminDashboard(request, env, url, kvManager);
     }
 
-    return new Response("404 Not Found", { status: 404 });
+    return new Response("404", { status: 404 });
   },
 
   async extractPassword(request) {
@@ -266,7 +263,6 @@ export default {
 
       return this.responseJson({ success: true, message: `تم استيراد ${count} قناة بنجاح`, count });
     } catch (e) {
-      console.error('Upload API error:', e);
       return this.responseJson({ success: false, error: e.message, count: 0 }, 500);
     }
   },
@@ -298,7 +294,7 @@ export default {
         }
       });
     } catch (error) {
-      return new Response("❌ خطأ", { status: 500 });
+      return new Response("خطأ", { status: 500 });
     }
   },
 
@@ -310,7 +306,7 @@ export default {
       const realTargetUrl = channels[channelName];
       
       if (!realTargetUrl) {
-        return new Response("❌ القناة غير موجودة", { status: 404 });
+        return new Response("القناة غير موجودة", { status: 404 });
       }
 
       const m3uContent = `#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-STREAM-INF:BANDWIDTH=2500000\n${realTargetUrl}\n`;
@@ -323,7 +319,7 @@ export default {
         }
       });
     } catch (error) {
-      return new Response("❌ خطأ", { status: 500 });
+      return new Response("خطأ", { status: 500 });
     }
   },
 
@@ -349,12 +345,12 @@ export default {
     try {
       const backupData = await kvManager.getBackup();
       if (!backupData || Object.keys(backupData).length === 0) {
-        return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=لا+توجد+نسخة`, 302);
+        return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=لا+توجد+نسخة+احتياطية`, 302);
       }
       
       await kvManager.saveChannels(backupData);
       await kvManager.clearBackup();
-      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+الاستعادة`, 302);
+      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+استعادة+القنوات`, 302);
     } catch (e) {
       return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=خطأ`, 302);
     }
@@ -392,25 +388,31 @@ export default {
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>تسجيل الدخول</title>
   <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:system-ui;background:#060911;color:#e6edf3;min-height:100vh;display:flex;align-items:center;justify-content:center}
-    .container{background:#0d121d;padding:40px;border-radius:16px;border:1px solid #1a2336;box-shadow:0 20px 50px rgba(0,0,0,0.9);max-width:420px;width:100%}
-    h1{text-align:center;margin-bottom:30px;font-size:24px}
-    input{width:100%;padding:12px;margin:12px 0;border:1px solid #1f2a40;background:#060911;color:#fff;border-radius:8px;font-size:16px}
-    input:focus{outline:none;border-color:#388bfd}
-    button{width:100%;padding:12px;margin-top:20px;background:#238636;color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer}
-    button:hover{background:#2ea043}
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .login-container { background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); padding: 40px; max-width: 400px; width: 100%; }
+    .login-header { text-align: center; margin-bottom: 30px; }
+    .login-header h1 { font-size: 24px; color: #333; font-weight: 600; }
+    .form-group { margin-bottom: 20px; }
+    .form-group input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
+    .form-group input:focus { outline: none; border-color: #007AFF; box-shadow: 0 0 0 3px rgba(0,122,255,0.1); }
+    .btn-login { width: 100%; padding: 12px; background: #007AFF; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: 600; cursor: pointer; }
+    .btn-login:hover { background: #0051D5; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>🔐 تسجيل دخول</h1>
+  <div class="login-container">
+    <div class="login-header">
+      <h1>لوحة التحكم</h1>
+    </div>
     <form method="GET" action="/admin">
-      <input type="password" name="password" placeholder="كلمة المرور" required autofocus>
-      <button type="submit">دخول</button>
+      <div class="form-group">
+        <input type="password" name="password" placeholder="كلمة المرور" required autofocus>
+      </div>
+      <button type="submit" class="btn-login">دخول</button>
     </form>
   </div>
 </body>
@@ -435,7 +437,7 @@ export default {
             if (oldName && oldName !== name) delete channels[oldName];
             channels[name] = channelUrl;
             await kvManager.saveChannels(channels);
-            return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+الحفظ`, 302);
+            return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+حفظ+القناة`, 302);
           } catch {
             return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=رابط+غير+صحيح`, 302);
           }
@@ -447,23 +449,24 @@ export default {
         if (name && channels[name]) {
           delete channels[name];
           await kvManager.saveChannels(channels);
-          return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+الحذف`, 302);
+          return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+حذف+القناة`, 302);
         }
       }
 
       let channelsHtml = '';
       const channelNames = Object.keys(channels);
       if (channelNames.length === 0) {
-        channelsHtml = `<tr><td colspan="3" style="text-align:center;padding:40px;color:#666">لا توجد قنوات</td></tr>`;
+        channelsHtml = `<tr><td colspan="3" style="text-align: center; padding: 30px; color: #999;">لا توجد قنوات</td></tr>`;
       } else {
         for (const [name, urlLink] of Object.entries(channels)) {
-          const shortUrl = urlLink.length > 50 ? urlLink.substring(0, 50) + '...' : urlLink;
-          channelsHtml += `<tr>
-            <td><strong>${name}</strong></td>
-            <td style="font-size:12px;color:#888;word-break:break-all">${shortUrl}</td>
-            <td style="text-align:center">
-              <button class="btn-small" onclick="editChannel('${name.replace(/'/g, "\\'")}', '${urlLink.replace(/'/g, "\\'")}')" ${isTempMode?'disabled':''}>تعديل</button>
-              <a href="/admin?action=delete&channel_name=${encodeURIComponent(name)}&password=${CONFIG.ADMIN_PASSWORD}" class="btn-small" onclick="return confirm('حذف؟')" ${isTempMode?'style=opacity:0.5;pointer-events:none':''}">حذف</a>
+          const shortUrl = urlLink.length > 45 ? urlLink.substring(0, 45) + '...' : urlLink;
+          channelsHtml += `
+          <tr>
+            <td><span class="channel-name">${name}</span></td>
+            <td><span class="channel-url" title="${urlLink}">${shortUrl}</span></td>
+            <td class="action-cell">
+              <button class="btn-action" onclick="editChannel('${name.replace(/'/g, "\\'")}', '${urlLink.replace(/'/g, "\\'")}')" ${isTempMode?'disabled':''}>تعديل</button>
+              <a href="/admin?action=delete&channel_name=${encodeURIComponent(name)}&password=${CONFIG.ADMIN_PASSWORD}" class="btn-action btn-delete" onclick="return confirm('تأكيد الحذف؟')" ${isTempMode?'style=opacity:0.5;pointer-events:none':''}">حذف</a>
             </td>
           </tr>`;
         }
@@ -473,136 +476,179 @@ export default {
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>لوحة التحكم</title>
   <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:system-ui;background:#060911;color:#e6edf3;padding:20px}
-    .container{max-width:1200px;margin:0 auto;background:#0d121d;border-radius:12px;padding:20px;border:1px solid #1a2336}
-    .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:15px;border-bottom:1px solid #1a2336}
-    h1{font-size:22px}
-    .btn-logout{background:#1f2937;padding:8px 16px;border-radius:6px;text-decoration:none;color:#fff;border:none;cursor:pointer}
-    .btn-logout:hover{background:#374151}
-    .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin:20px 0}
-    .stat{background:#111827;padding:12px;border-radius:8px;text-align:center;border:1px solid #1a2336}
-    .stat-num{font-size:28px;font-weight:bold;color:#3fb950}
-    .stat-label{font-size:12px;color:#888;margin-top:8px}
-    .success{background:rgba(46,160,67,0.15);color:#3fb950;border:1px solid rgba(46,160,67,0.4);padding:12px;border-radius:8px;margin:12px 0}
-    .error{background:rgba(248,81,73,0.15);color:#f85149;border:1px solid rgba(248,81,73,0.4);padding:12px;border-radius:8px;margin:12px 0}
-    .form-box{background:#111827;padding:16px;border-radius:8px;margin:20px 0;border:1px solid #1a2336}
-    .form-box h3{margin-bottom:12px;font-size:14px}
-    .form-group{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-    input[type="text"],input[type="url"],input[type="file"]{flex:1;min-width:200px;padding:10px;border:1px solid #1f2a40;background:#060911;color:#fff;border-radius:6px;font-size:13px}
-    input[type="file"]{cursor:pointer}
-    .btn{padding:10px 20px;background:#238636;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600}
-    .btn:hover{background:#2ea043}
-    .btn:disabled{background:#444;cursor:not-allowed;opacity:0.5}
-    .btn-small{padding:5px 10px;background:#1f6feb;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;margin:0 2px}
-    .btn-small:hover{background:#388bfd}
-    .btn-small:disabled{opacity:0.5;cursor:not-allowed}
-    table{width:100%;border-collapse:collapse;margin:20px 0}
-    th,td{padding:12px;text-align:right;border-bottom:1px solid #1a2336}
-    th{background:#111827;color:#888;font-weight:600}
-    .upload-area{border:2px dashed #1f2a40;padding:20px;border-radius:8px;text-align:center;background:#060911}
-    .upload-area:hover{border-color:#388bfd;background:#0d121d}
-    .upload-area p{color:#888;margin:10px 0}
-    #uploadStatus{margin-top:10px;padding:10px;border-radius:6px;display:none}
-    #uploadStatus.success{background:rgba(46,160,67,0.2);color:#3fb950;border:1px solid rgba(46,160,67,0.4);display:block}
-    #uploadStatus.error{background:rgba(248,81,73,0.2);color:#f85149;border:1px solid rgba(248,81,73,0.4);display:block}
-    .instructions{background:#111827;padding:12px;border-left:4px solid #1f6feb;border-radius:6px;font-size:12px;color:#888;margin-bottom:12px}
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .header { background: white; padding: 16px 20px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .header h1 { font-size: 22px; font-weight: 600; }
+    .btn-logout { background: #f5f5f5; border: 1px solid #ddd; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    .btn-logout:hover { background: #e8e8e8; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .stat-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .stat-number { font-size: 28px; font-weight: 700; color: #007AFF; }
+    .stat-label { font-size: 12px; color: #999; margin-top: 8px; }
+    .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
+    .alert-success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+    .alert-error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    .section { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .section h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #333; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .btn { padding: 10px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; font-weight: 500; }
+    .btn-primary { background: #007AFF; color: white; }
+    .btn-primary:hover { background: #0051D5; }
+    .btn-primary:disabled { background: #ccc; cursor: not-allowed; }
+    .btn-warning { background: #f59e0b; color: white; }
+    .btn-warning:hover { background: #d97706; }
+    .btn-warning:disabled { background: #ccc; cursor: not-allowed; opacity: 0.5; }
+    .btn-info { background: #3b82f6; color: white; }
+    .btn-info:hover { background: #2563eb; }
+    .btn-info:disabled { background: #ccc; cursor: not-allowed; opacity: 0.5; }
+    .upload-area { border: 2px dashed #ddd; border-radius: 8px; padding: 30px; text-align: center; cursor: pointer; transition: all 0.3s; }
+    .upload-area:hover { border-color: #007AFF; background: #f9f9f9; }
+    .upload-area input[type="file"] { display: none; }
+    .upload-text { color: #666; font-size: 14px; }
+    #uploadStatus { margin-top: 12px; padding: 12px; border-radius: 6px; font-size: 14px; display: none; }
+    #uploadStatus.success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; display: block; }
+    #uploadStatus.error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; display: block; }
+    .form-inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+    .form-inline input { flex: 1; min-width: 200px; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+    .form-inline input:focus { outline: none; border-color: #007AFF; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px; text-align: right; border-bottom: 1px solid #eee; }
+    th { background: #f9f9f9; font-weight: 600; color: #666; font-size: 13px; }
+    .channel-name { color: #007AFF; font-weight: 500; }
+    .channel-url { font-size: 13px; color: #999; font-family: monospace; }
+    .action-cell { width: 200px; }
+    .btn-action { padding: 6px 12px; border-radius: 4px; border: none; cursor: pointer; font-size: 12px; margin: 0 4px; }
+    .btn-action { background: #e3f2fd; color: #1976d2; }
+    .btn-action:hover { background: #bbdefb; }
+    .btn-delete { background: #ffebee; color: #c62828; }
+    .btn-delete:hover { background: #ffcdd2; }
+    .btn-action:disabled { opacity: 0.5; cursor: not-allowed; }
+    .mode-badge { display: inline-block; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+    .mode-normal { background: #d1fae5; color: #065f46; }
+    .mode-rights { background: #fee2e2; color: #991b1b; }
+    .instructions { background: #f0f9ff; border-left: 4px solid #0284c7; padding: 12px; border-radius: 4px; font-size: 13px; color: #0c4a6e; margin-bottom: 12px; }
+    @media (max-width: 768px) {
+      .header { flex-direction: column; align-items: flex-start; gap: 12px; }
+      .stats { grid-template-columns: 1fr; }
+      .table-wrapper { overflow-x: auto; }
+      table { font-size: 13px; }
+      .form-inline { flex-direction: column; }
+      .form-inline input { width: 100%; }
+      .btn { padding: 8px 12px; font-size: 13px; }
+    }
   </style>
 </head>
 <body>
 <div class="container">
   <div class="header">
-    <h1>⚙️ لوحة التحكم v${CONFIG.VERSION}</h1>
-    <form method="GET" action="/admin" style="display:inline">
+    <h1>لوحة التحكم</h1>
+    <form method="GET" action="/admin" style="margin: 0;">
       <input type="hidden" name="logout" value="true">
       <input type="hidden" name="password" value="${CONFIG.ADMIN_PASSWORD}">
-      <button class="btn-logout">🚪 خروج</button>
+      <button type="submit" class="btn-logout">تسجيل الخروج</button>
     </form>
   </div>
 
-  ${url.searchParams.get('success') ? `<div class="success">✅ ${decodeURIComponent(url.searchParams.get('success'))}</div>` : ''}
-  ${url.searchParams.get('error') ? `<div class="error">❌ ${decodeURIComponent(url.searchParams.get('error'))}</div>` : ''}
+  ${url.searchParams.get('success') ? `<div class="alert alert-success">${decodeURIComponent(url.searchParams.get('success'))}</div>` : ''}
+  ${url.searchParams.get('error') ? `<div class="alert alert-error">${decodeURIComponent(url.searchParams.get('error'))}</div>` : ''}
 
   <div class="stats">
-    <div class="stat">
-      <div class="stat-num">${channelNames.length}</div>
-      <div class="stat-label">قناة</div>
+    <div class="stat-card">
+      <div class="stat-number">${channelNames.length}</div>
+      <div class="stat-label">القنوات المسجلة</div>
     </div>
-    <div class="stat">
-      <div class="stat-num">${isTempMode ? '🔴' : '🟢'}</div>
-      <div class="stat-label">${isTempMode ? 'وضع الحقوق' : 'وضع عادي'}</div>
+    <div class="stat-card">
+      <div class="stat-number">${CONFIG.VERSION}</div>
+      <div class="stat-label">إصدار النظام</div>
+    </div>
+    <div class="stat-card">
+      <span class="mode-badge ${isTempMode ? 'mode-rights' : 'mode-normal'}">${isTempMode ? 'وضع الحقوق مفعل' : 'الوضع العادي'}</span>
     </div>
   </div>
 
-  <div class="form-box">
-    <h3>📤 رفع ملف M3U / M3U8</h3>
-    <div class="instructions">
-      💡 اختر ملف M3U أو M3U8 من جهازك ثم اضغط رفع
+  <div class="section">
+    <h2>إدارة وضع الحقوق</h2>
+    <div class="toolbar">
+      <a href="/enable-rights?password=${CONFIG.ADMIN_PASSWORD}" class="btn btn-warning" onclick="return confirm('تفعيل وضع الحقوق؟ سيتم حفظ القنوات الحالية')" ${isTempMode?'style=opacity:0.5;pointer-events:none;':''}>تفعيل وضع الحقوق</a>
+      <a href="/restore-channels?password=${CONFIG.ADMIN_PASSWORD}" class="btn btn-info" onclick="return confirm('استعادة القنوات الأصلية؟')" ${!isTempMode?'style=opacity:0.5;pointer-events:none;':''}>استعادة القنوات</a>
     </div>
+  </div>
+
+  <div class="section">
+    <h2>استيراد ملف M3U</h2>
+    <div class="instructions">يمكنك رفع ملف M3U أو M3U8 يحتوي على قنوات البث. سيتم دمج القنوات مع الموجودة.</div>
     <div class="upload-area" id="uploadArea">
-      <input type="file" id="fileInput" accept=".m3u,.m3u8,.txt" style="display:none">
-      <p>👆 اضغط هنا لاختيار ملف أو اسحب الملف هنا</p>
-      <p style="font-size:12px;color:#666">الملف يجب أن يكون M3U أو M3U8</p>
+      <input type="file" id="fileInput" accept=".m3u,.m3u8,.txt">
+      <p class="upload-text">اضغط هنا أو اسحب ملف M3U</p>
     </div>
     <div id="uploadStatus"></div>
-    <div style="margin-top:12px">
-      <button class="btn" id="uploadBtn" onclick="uploadFile()" ${isTempMode?'disabled':''}>📤 رفع الملف</button>
-    </div>
   </div>
 
-  <div class="form-box">
-    <h3>➕ إضافة قناة يدوياً</h3>
-    <form method="GET" action="/admin">
+  <div class="section">
+    <h2>إضافة قناة يدويًا</h2>
+    <form method="GET" action="/admin" class="form-inline">
       <input type="hidden" name="action" value="save">
       <input type="hidden" name="password" value="${CONFIG.ADMIN_PASSWORD}">
       <input type="hidden" name="old_name" id="old_name">
-      <div class="form-group">
-        <input type="text" name="channel_name" id="channel_name" placeholder="اسم القناة" required ${isTempMode?'disabled':''}>
-        <input type="url" name="channel_url" id="channel_url" placeholder="https://..." required ${isTempMode?'disabled':''}>
-        <button type="submit" class="btn" ${isTempMode?'disabled':''}>إضافة</button>
-        <button type="button" class="btn" style="background:#666" onclick="resetForm()" id="cancelBtn" style="display:none">إلغاء</button>
-      </div>
+      <input type="text" name="channel_name" id="channel_name" placeholder="اسم القناة" required ${isTempMode?'disabled':''}>
+      <input type="url" name="channel_url" id="channel_url" placeholder="رابط البث (https://...)" required ${isTempMode?'disabled':''}>
+      <button type="submit" class="btn btn-primary" ${isTempMode?'disabled':''}>إضافة</button>
+      <button type="button" class="btn" style="background: #e5e7eb; color: #333;" onclick="resetForm()" id="cancelBtn" style="display: none;">إلغاء</button>
     </form>
   </div>
 
-  <table>
-    <thead>
-      <tr>
-        <th>📺 القناة</th>
-        <th>🔗 الرابط</th>
-        <th style="width:120px">إجراء</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${channelsHtml}
-    </tbody>
-  </table>
+  <div class="section">
+    <h2>القنوات المسجلة</h2>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>اسم القناة</th>
+            <th>رابط البث</th>
+            <th>إجراء</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${channelsHtml}
+        </tbody>
+      </table>
+    </div>
+  </div>
 
-  <div style="margin-top:20px;padding-top:20px;border-top:1px solid #1a2336;color:#888;font-size:12px">
-    <p>📥 <a href="/export-m3u?password=${CONFIG.ADMIN_PASSWORD}" style="color:#58a6ff">تحميل ملف M3U المعدل</a></p>
+  <div class="section">
+    <h2>خيارات إضافية</h2>
+    <div class="toolbar">
+      <a href="/export-m3u?password=${CONFIG.ADMIN_PASSWORD}" class="btn btn-primary">تحميل ملف M3U المعدل</a>
+      <a href="/health" target="_blank" class="btn" style="background: #e5e7eb; color: #333;">فحص النظام</a>
+    </div>
   </div>
 </div>
 
 <script>
 const fileInput = document.getElementById('fileInput');
 const uploadArea = document.getElementById('uploadArea');
-const uploadBtn = document.getElementById('uploadBtn');
 const uploadStatus = document.getElementById('uploadStatus');
 
 uploadArea.addEventListener('click', () => fileInput.click());
 uploadArea.addEventListener('dragover', (e) => {
   e.preventDefault();
-  uploadArea.style.borderColor = '#388bfd';
+  uploadArea.style.borderColor = '#007AFF';
+  uploadArea.style.background = '#f0f9ff';
 });
 uploadArea.addEventListener('dragleave', () => {
-  uploadArea.style.borderColor = '#1f2a40';
+  uploadArea.style.borderColor = '#ddd';
+  uploadArea.style.background = 'white';
 });
 uploadArea.addEventListener('drop', (e) => {
   e.preventDefault();
-  uploadArea.style.borderColor = '#1f2a40';
+  uploadArea.style.borderColor = '#ddd';
+  uploadArea.style.background = 'white';
   const files = e.dataTransfer.files;
   if (files.length > 0) {
     fileInput.files = files;
@@ -623,10 +669,9 @@ async function uploadFile() {
     return;
   }
 
-  uploadStatus.textContent = '⏳ جاري الرفع...';
+  uploadStatus.textContent = 'جاري الرفع...';
   uploadStatus.className = '';
   uploadStatus.style.display = 'block';
-  uploadBtn.disabled = true;
 
   const formData = new FormData();
   formData.append('m3u_file', file);
@@ -641,16 +686,14 @@ async function uploadFile() {
     const data = await response.json();
 
     if (data.success) {
-      showStatus('✅ تم استيراد ' + data.count + ' قناة بنجاح!', 'success');
+      showStatus('تم استيراد ' + data.count + ' قناة بنجاح', 'success');
       fileInput.value = '';
       setTimeout(() => location.reload(), 1500);
     } else {
-      showStatus('❌ ' + (data.error || 'خطأ'), 'error');
+      showStatus(data.error || 'خطأ', 'error');
     }
   } catch (e) {
-    showStatus('❌ خطأ في الاتصال: ' + e.message, 'error');
-  } finally {
-    uploadBtn.disabled = false;
+    showStatus('خطأ في الاتصال: ' + e.message, 'error');
   }
 }
 
@@ -678,7 +721,7 @@ function resetForm() {
 </body>
 </html>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
     } catch (error) {
-      return new Response("❌ خطأ", { status: 500 });
+      return new Response("خطأ", { status: 500 });
     }
   }
 };
