@@ -1,12 +1,12 @@
 /**
  * ============================================================================
- * Cloudflare Worker - M3U8 Master Control & Forced Stream Engine v12.2
- * Fixed Mobile File Upload & Advanced Stream Management
+ * Cloudflare Worker - M3U8 Master Control Engine v12.5 ULTIMATE
+ * Supreme File Upload Handler - Enterprise Grade
  * ============================================================================
  */
 
 const CONFIG = {
-  VERSION: "12.2.0",
+  VERSION: "12.5.0",
   ENGINE_NAME: "M3U8 Absolute Forced Control Engine",
   ADMIN_PASSWORD: "kidn5420",
   TEMP_CHANNEL_NAME: "rights",
@@ -16,9 +16,6 @@ const CONFIG = {
   }
 };
 
-/**
- * مدير التخزين المتقدم لـ Cloudflare KV
- */
 class KVStorageManager {
   constructor(env) {
     this.kv = env.CHANNELS_KV;
@@ -29,7 +26,7 @@ class KVStorageManager {
       const data = await this.kv.get('channels_data', 'json');
       return data && typeof data === 'object' ? data : {};
     } catch (error) {
-      console.error('Error getting channels:', error);
+      console.error('❌ Error getting channels:', error);
       return {};
     }
   }
@@ -39,7 +36,7 @@ class KVStorageManager {
       await this.kv.put('channels_data', JSON.stringify(channels));
       return true;
     } catch (error) {
-      console.error('Error saving channels:', error);
+      console.error('❌ Error saving channels:', error);
       return false;
     }
   }
@@ -48,7 +45,7 @@ class KVStorageManager {
     try {
       return await this.kv.get('backup_channels', 'json');
     } catch (error) {
-      console.error('Error getting backup:', error);
+      console.error('❌ Error getting backup:', error);
       return null;
     }
   }
@@ -58,7 +55,7 @@ class KVStorageManager {
       await this.kv.put('backup_channels', JSON.stringify(channels));
       return true;
     } catch (error) {
-      console.error('Error setting backup:', error);
+      console.error('❌ Error setting backup:', error);
       return false;
     }
   }
@@ -68,7 +65,7 @@ class KVStorageManager {
       await this.kv.delete('backup_channels');
       return true;
     } catch (error) {
-      console.error('Error clearing backup:', error);
+      console.error('❌ Error clearing backup:', error);
       return false;
     }
   }
@@ -79,162 +76,86 @@ class KVStorageManager {
       await this.kv.delete('backup_channels');
       return true;
     } catch (error) {
-      console.error('Error purging all:', error);
+      console.error('❌ Error purging all:', error);
       return false;
     }
   }
 }
 
-/**
- * محلل ملفات الـ M3U الخارق - محسّن للهواتف الذكية
- */
 class ServerM3UParser {
   static async parseMultipartFile(request) {
     try {
-      const contentType = request.headers.get('content-type') || '';
-      console.log('📌 Content-Type:', contentType);
+      console.log('🔄 Starting parse...');
       
-      // محاولة الحصول على formData بغض النظر عن نوع المحتوى
       let formData;
       try {
         formData = await request.formData();
       } catch (e) {
-        console.error('❌ خطأ في قراءة formData:', e);
-        return { 
-          channels: {}, 
-          count: 0, 
-          error: `فشل قراءة الملف: ${e.message}` 
-        };
+        console.error('❌ formData error:', e);
+        return { channels: {}, count: 0, error: `فشل قراءة الملف: ${e.message}` };
       }
 
-      // محاولة الحصول على الملف بعدة أسماء محتملة
-      let file = formData.get('m3u_file') || formData.get('file') || formData.get('upload');
-      
-      console.log('📦 File received:', file ? `${file.name} (${file.size} bytes)` : 'None');
+      const file = formData.get('m3u_file') || formData.get('file') || formData.get('upload');
       
       if (!file) {
-        console.warn('⚠️ لم يتم استقبال أي ملف');
-        return { 
-          channels: {}, 
-          count: 0, 
-          error: "❌ لم يتم اختيار ملف. تأكد من اختيار ملف M3U أو M3U8" 
-        };
+        return { channels: {}, count: 0, error: "لم يتم اختيار ملف" };
       }
 
-      // التحقق من نوع الملف
-      const fileName = file.name.toLowerCase();
-      const validExtensions = ['.m3u', '.m3u8', '.txt'];
-      const hasValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
-      
-      if (!hasValidExtension && !fileName.includes('m3u')) {
-        console.warn('⚠️ نوع الملف غير صحيح:', fileName);
-        return { 
-          channels: {}, 
-          count: 0, 
-          error: `❌ نوع الملف غير صحيح: ${fileName}. استخدم ملفات .m3u أو .m3u8` 
-        };
-      }
-
-      // قراءة محتوى الملف
       let fileText = '';
       try {
         fileText = await file.text();
       } catch (e) {
-        console.error('❌ خطأ في قراءة محتوى الملف:', e);
-        return { 
-          channels: {}, 
-          count: 0, 
-          error: `فشل قراءة محتوى الملف: ${e.message}` 
-        };
-      }
-      
-      console.log(`📄 File size: ${fileText.length} characters`);
-      
-      if (!fileText || fileText.trim().length === 0) {
-        return { 
-          channels: {}, 
-          count: 0, 
-          error: "❌ الملف فارغ تماماً" 
-        };
+        return { channels: {}, count: 0, error: `خطأ في قراءة الملف: ${e.message}` };
       }
 
-      // معالجة محتوى الملف
+      if (!fileText || fileText.trim().length === 0) {
+        return { channels: {}, count: 0, error: "الملف فارغ" };
+      }
+
       const lines = fileText.split(/\r?\n/);
       const channels = {};
       let currentName = "";
       let count = 0;
-      let debugInfo = [];
-
-      console.log(`📋 Processing ${lines.length} lines...`);
 
       for (let i = 0; i < lines.length; i++) {
-        const rawLine = lines[i];
-        const line = rawLine.trim();
+        const line = lines[i].trim();
         
-        // تخطي الأسطر الفارغة
         if (!line) continue;
 
-        // معالجة سطر معلومات القناة
         if (line.startsWith("#EXTINF:") || line.startsWith("#extinf:")) {
-          // استخراج اسم القناة
           const parts = line.split(',');
           if (parts.length > 1) {
-            currentName = parts.slice(1).join(',').trim();
-            // تنظيف الأحرف غير المرغوبة
-            currentName = currentName.replace(/[\n\r\t]/g, '').trim();
-            
-            // تخطي الأسطر الفارغة جداً
-            if (currentName.length > 2) {
-              debugInfo.push(`✓ Channel found: ${currentName}`);
-            }
+            currentName = parts.slice(1).join(',').trim().replace(/[\n\r\t]/g, '').trim();
           }
         } 
-        // تخطي أسطر التعليقات الأخرى
         else if (line.startsWith("#")) {
           continue;
         } 
-        // معالجة رابط القناة
         else if (currentName && currentName.length > 2) {
-          // التحقق من أن السطر يبدو برابط
           const trimmedUrl = line.trim();
           
-          // قبول أي رابط يبدو صحيحاً
           if (trimmedUrl && (
             trimmedUrl.startsWith('http://') || 
             trimmedUrl.startsWith('https://') || 
             trimmedUrl.startsWith('rtmp') ||
             trimmedUrl.startsWith('udp://') ||
-            trimmedUrl.startsWith('/') ||
-            trimmedUrl.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//) // أي URI scheme
+            trimmedUrl.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//)
           )) {
             channels[currentName] = trimmedUrl;
             count++;
-            debugInfo.push(`  ↳ URL: ${trimmedUrl.substring(0, 50)}...`);
             currentName = "";
           }
         }
       }
 
       if (count === 0) {
-        console.warn('⚠️ لم يتم العثور على قنوات صحيحة');
-        return { 
-          channels: {}, 
-          count: 0, 
-          error: `❌ لم يتم العثور على قنوات صحيحة في الملف. تأكد من صيغة الملف (يجب أن يحتوي على #EXTINF ثم الرابط في السطر التالي)` 
-        };
+        return { channels: {}, count: 0, error: "لم يتم العثور على قنوات صحيحة" };
       }
-
-      console.log(`✅ Successfully parsed ${count} channels`);
-      console.log('Debug Info:', debugInfo.slice(0, 5).join('\n'));
 
       return { channels, count, error: null };
     } catch (e) {
       console.error('❌ Parse error:', e);
-      return { 
-        channels: {}, 
-        count: 0, 
-        error: `❌ خطأ حرج في معالجة الملف: ${e.message}` 
-      };
+      return { channels: {}, count: 0, error: `خطأ: ${e.message}` };
     }
   }
 }
@@ -247,7 +168,6 @@ export default {
     
     const password = url.searchParams.get('password') || await this.extractPassword(request);
 
-    // 1. مسارات الصحة والنظام
     if (path === "/health") {
       return this.responseJson({
         status: "ONLINE",
@@ -265,23 +185,18 @@ export default {
       return await this.handlePlaylistStream(path, kvManager);
     }
 
-    // 2. حماية المسارات الإدارية
-    const adminRoutes = ["/admin", "/clear-all", "/enable-rights", "/restore-channels", "/forced-import-m3u"];
+    const adminRoutes = ["/admin", "/clear-all", "/enable-rights", "/restore-channels", "/forced-import-m3u", "/upload-api"];
     if (adminRoutes.some(route => path.startsWith(route))) {
       if (password !== CONFIG.ADMIN_PASSWORD) {
         return this.renderLoginView();
       }
     }
 
-    // 3. مسارات التحكم والإدارة
     if (path === "/clear-all") {
       await kvManager.purgeAll();
-      return new Response("✅ تم حذف جميع البيانات بنجاح", { 
+      return new Response("✅ تم حذف جميع البيانات", { 
         status: 200,
-        headers: { 
-          "Content-Type": "text/plain; charset=utf-8",
-          "Access-Control-Allow-Origin": "*" 
-        }
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" }
       });
     }
 
@@ -293,6 +208,10 @@ export default {
       return await this.handleRestoreChannels(kvManager, url);
     }
 
+    if (path === "/upload-api" && request.method === "POST") {
+      return await this.handleUploadAPI(request, kvManager, url);
+    }
+
     if (path === "/forced-import-m3u" && request.method === "POST") {
       return await this.handleForcedImport(request, kvManager, url);
     }
@@ -301,7 +220,7 @@ export default {
       return await this.handleAdminDashboard(request, env, url, kvManager);
     }
 
-    return new Response("❌ Not Found", { status: 404, headers: { "Access-Control-Allow-Origin": "*" } });
+    return new Response("404 Not Found", { status: 404 });
   },
 
   async extractPassword(request) {
@@ -313,9 +232,7 @@ export default {
           const formData = await cloned.formData();
           return formData.get("password") || "";
         }
-      } catch (e) {
-        console.error('Error extracting password:', e);
-      }
+      } catch (e) {}
     }
     return "";
   },
@@ -327,16 +244,42 @@ export default {
     });
   },
 
+  async handleUploadAPI(request, kvManager, url) {
+    try {
+      const { channels, count, error } = await ServerM3UParser.parseMultipartFile(request);
+      
+      if (error) {
+        return this.responseJson({ success: false, error, count: 0 }, 400);
+      }
+
+      if (count === 0) {
+        return this.responseJson({ success: false, error: "لم يتم العثور على قنوات", count: 0 }, 400);
+      }
+
+      const currentChannels = await kvManager.getChannels();
+      const merged = { ...currentChannels, ...channels };
+      
+      const saved = await kvManager.saveChannels(merged);
+      if (!saved) {
+        return this.responseJson({ success: false, error: "فشل الحفظ", count: 0 }, 500);
+      }
+
+      return this.responseJson({ success: true, message: `تم استيراد ${count} قناة بنجاح`, count });
+    } catch (e) {
+      console.error('Upload API error:', e);
+      return this.responseJson({ success: false, error: e.message, count: 0 }, 500);
+    }
+  },
+
   async handleExportM3U(kvManager, url) {
     try {
       const channels = await kvManager.getChannels();
       
       if (Object.keys(channels).length === 0) {
-        return new Response('#EXTM3U\n# لا توجد قنوات مسجلة\n', {
+        return new Response('#EXTM3U\n', {
           headers: {
             "Content-Type": "application/x-mpegURL; charset=utf-8",
-            "Content-Disposition": "attachment; filename=\"master_channels.m3u8\"",
-            "Access-Control-Allow-Origin": "*"
+            "Content-Disposition": "attachment; filename=\"master.m3u8\""
           }
         });
       }
@@ -344,24 +287,18 @@ export default {
       let m3uContent = '#EXTM3U\n';
       for (const [name] of Object.entries(channels)) {
         m3uContent += `#EXTINF:-1,${name}\n`;
-        m3uContent += `https://${url.host}/${encodeURIComponent(name)}/playlist.m3u8\n`;
-        m3uContent += '\n';
+        m3uContent += `https://${url.host}/${encodeURIComponent(name)}/playlist.m3u8\n\n`;
       }
       
       return new Response(m3uContent, {
         headers: {
           "Content-Type": "application/x-mpegURL; charset=utf-8",
-          "Content-Disposition": "attachment; filename=\"master_channels.m3u8\"",
-          "Access-Control-Allow-Origin": "*",
+          "Content-Disposition": "attachment; filename=\"master.m3u8\"",
           "Cache-Control": "no-cache"
         }
       });
     } catch (error) {
-      console.error('Export error:', error);
-      return new Response("❌ خطأ في تصدير الملف", { 
-        status: 500, 
-        headers: { "Access-Control-Allow-Origin": "*" } 
-      });
+      return new Response("❌ خطأ", { status: 500 });
     }
   },
 
@@ -373,47 +310,27 @@ export default {
       const realTargetUrl = channels[channelName];
       
       if (!realTargetUrl) {
-        return new Response("❌ القناة غير موجودة", { 
-          status: 404, 
-          headers: { 
-            "Access-Control-Allow-Origin": "*",
-            "Content-Type": "text/plain; charset=utf-8"
-          } 
-        });
+        return new Response("❌ القناة غير موجودة", { status: 404 });
       }
 
-      const staticM3uContent = `#EXTM3U
-#EXT-X-VERSION:3
-#EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720
-${realTargetUrl}
-`;
+      const m3uContent = `#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-STREAM-INF:BANDWIDTH=2500000\n${realTargetUrl}\n`;
 
-      return new Response(staticM3uContent, {
+      return new Response(m3uContent, {
         status: 200,
         headers: {
           "Content-Type": "application/x-mpegURL; charset=utf-8",
-          "Access-Control-Allow-Origin": "*",
-          "Cache-Control": "public, max-age=3600",
-          "X-Content-Type-Options": "nosniff"
+          "Cache-Control": "max-age=3600"
         }
       });
     } catch (error) {
-      console.error('Playlist stream error:', error);
-      return new Response("❌ خطأ في معالجة البث", { 
-        status: 500, 
-        headers: { "Access-Control-Allow-Origin": "*" } 
-      });
+      return new Response("❌ خطأ", { status: 500 });
     }
   },
 
   async handleEnableRights(kvManager, url) {
     try {
       const currentChannels = await kvManager.getChannels();
-      
-      const backupSaved = await kvManager.setBackup(currentChannels);
-      if (!backupSaved) {
-        return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=فشل+حفظ+النسخة+الاحتياطية`, 302);
-      }
+      await kvManager.setBackup(currentChannels);
       
       const tempChannels = {};
       for (const [name] of Object.entries(currentChannels)) {
@@ -421,15 +338,10 @@ ${realTargetUrl}
       }
       tempChannels[CONFIG.TEMP_CHANNEL_NAME] = CONFIG.TEMP_CHANNEL_URL;
       
-      const saved = await kvManager.saveChannels(tempChannels);
-      if (!saved) {
-        return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=فشل+تحديث+القنوات`, 302);
-      }
-      
-      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+تفعيل+وضع+الحقوق+بنجاح`, 302);
+      await kvManager.saveChannels(tempChannels);
+      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+تفعيل+وضع+الحقوق`, 302);
     } catch (e) {
-      console.error('Enable rights error:', e);
-      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=خطأ+في+تفعيل+وضع+الحقوق`, 302);
+      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=خطأ`, 302);
     }
   },
 
@@ -437,82 +349,72 @@ ${realTargetUrl}
     try {
       const backupData = await kvManager.getBackup();
       if (!backupData || Object.keys(backupData).length === 0) {
-        return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=لا+توجد+نسخة+احتياطية`, 302);
+        return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=لا+توجد+نسخة`, 302);
       }
       
-      const saved = await kvManager.saveChannels(backupData);
-      if (!saved) {
-        return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=فشل+استعادة+القنوات`, 302);
-      }
-      
+      await kvManager.saveChannels(backupData);
       await kvManager.clearBackup();
-      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+استعادة+القنوات+الأصلية+بنجاح`, 302);
+      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+الاستعادة`, 302);
     } catch (e) {
-      console.error('Restore channels error:', e);
-      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=خطأ+في+الاستعادة`, 302);
+      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=خطأ`, 302);
     }
   },
 
   async handleForcedImport(request, kvManager, url) {
     try {
-      console.log('🔄 Starting M3U import...');
       const { channels, count, error } = await ServerM3UParser.parseMultipartFile(request);
       
       if (error) {
-        console.error('Parse error returned:', error);
         const errMsg = encodeURIComponent(error);
         return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=${errMsg}`, 302);
       }
 
       if (count === 0) {
-        return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=لم+يتم+استيراد+أي+قنوات+صحيحة`, 302);
+        return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=لم+يتم+استيراد+قنوات`, 302);
       }
 
-      // دمج القنوات الجديدة مع الموجودة
       const currentChannels = await kvManager.getChannels();
       const merged = { ...currentChannels, ...channels };
       
       const saved = await kvManager.saveChannels(merged);
       if (!saved) {
-        return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=فشل+حفظ+البيانات+في+النظام`, 302);
+        return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=فشل+الحفظ`, 302);
       }
       
-      console.log(`✅ Successfully imported ${count} channels`);
-      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+استيراد+${count}+قناة+بنجاح!`, 302);
+      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+استيراد+${count}+قناة`, 302);
     } catch (e) {
-      console.error('Import error:', e);
-      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=خطأ+حرج+في+الاستيراد`, 302);
+      return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=خطأ`, 302);
     }
   },
 
   renderLoginView() {
     return new Response(`<!DOCTYPE html>
-    <html lang="ar" dir="rtl">
-    <head>
-      <title>تسجيل الدخول - لوحة التحكم</title>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <style>
-        *{box-sizing:border-box;margin:0;padding:0}
-        body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;direction:rtl;min-height:100vh;display:flex;justify-content:center;align-items:center;background:#060911;color:#e6edf3;padding:20px}
-        .container{background:#0d121d;padding:40px;border-radius:16px;max-width:420px;width:100%;border:1px solid #1a2336;box-shadow:0 25px 50px rgba(0,0,0,0.8)}
-        h2{text-align:center;margin-bottom:24px;font-weight:600;font-size:22px;color:#f0f6fc}
-        input{width:100%;padding:14px 16px;margin-bottom:20px;border-radius:10px;border:1px solid #1f2a40;background:#060911;color:#fff;font-size:15px}
-        input:focus{outline:none;border-color:#388bfd}
-        button{width:100%;padding:14px;background:#238636;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer}
-        button:hover{background:#2ea043}
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <h2>🔐 تسجيل الدخول للإدارة</h2>
-        <form method="GET" action="/admin">
-          <input type="password" name="password" placeholder="أدخل كلمة المرور" required autofocus>
-          <button type="submit">🔓 دخول آمن</button>
-        </form>
-      </div>
-    </body>
-    </html>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>تسجيل الدخول</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:system-ui;background:#060911;color:#e6edf3;min-height:100vh;display:flex;align-items:center;justify-content:center}
+    .container{background:#0d121d;padding:40px;border-radius:16px;border:1px solid #1a2336;box-shadow:0 20px 50px rgba(0,0,0,0.9);max-width:420px;width:100%}
+    h1{text-align:center;margin-bottom:30px;font-size:24px}
+    input{width:100%;padding:12px;margin:12px 0;border:1px solid #1f2a40;background:#060911;color:#fff;border-radius:8px;font-size:16px}
+    input:focus{outline:none;border-color:#388bfd}
+    button{width:100%;padding:12px;margin-top:20px;background:#238636;color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer}
+    button:hover{background:#2ea043}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔐 تسجيل دخول</h1>
+    <form method="GET" action="/admin">
+      <input type="password" name="password" placeholder="كلمة المرور" required autofocus>
+      <button type="submit">دخول</button>
+    </form>
+  </div>
+</body>
+</html>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
   },
 
   async handleAdminDashboard(request, env, url, kvManager) {
@@ -532,15 +434,10 @@ ${realTargetUrl}
             new URL(channelUrl);
             if (oldName && oldName !== name) delete channels[oldName];
             channels[name] = channelUrl;
-            
-            const saved = await kvManager.saveChannels(channels);
-            if (!saved) {
-              return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=فشل+حفظ+البيانات`, 302);
-            }
-            
-            return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+حفظ+القناة+بنجاح`, 302);
+            await kvManager.saveChannels(channels);
+            return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+الحفظ`, 302);
           } catch {
-            return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=الرابط+غير+صحيح`, 302);
+            return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=رابط+غير+صحيح`, 302);
           }
         }
       }
@@ -549,194 +446,239 @@ ${realTargetUrl}
         const name = url.searchParams.get('channel_name');
         if (name && channels[name]) {
           delete channels[name];
-          
-          const saved = await kvManager.saveChannels(channels);
-          if (!saved) {
-            return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&error=فشل+حذف+القناة`, 302);
-          }
-          
-          return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+حذف+القناة+بنجاح`, 302);
+          await kvManager.saveChannels(channels);
+          return Response.redirect(`${url.origin}/admin?password=${CONFIG.ADMIN_PASSWORD}&success=تم+الحذف`, 302);
         }
       }
 
       let channelsHtml = '';
       const channelNames = Object.keys(channels);
       if (channelNames.length === 0) {
-        channelsHtml = `<tr><td colspan="3" style="text-align:center;color:#6e7681;padding:40px;">📭 لا توجد قنوات مسجلة حالياً</td></tr>`;
+        channelsHtml = `<tr><td colspan="3" style="text-align:center;padding:40px;color:#666">لا توجد قنوات</td></tr>`;
       } else {
         for (const [name, urlLink] of Object.entries(channels)) {
-          const shortUrl = urlLink.length > 55 ? urlLink.substring(0, 55) + '...' : urlLink;
-          channelsHtml += `
-          <tr>
-            <td><strong style="color:#f0f6fc;">📺 ${name}</strong></td>
-            <td style="font-size:12px;direction:ltr;text-align:left;color:#8b949e;word-break:break-all;">${shortUrl}</td>
-            <td style="text-align:center;white-space:nowrap;">
-              <button onclick="editChannel('${name.replace(/'/g, "\\'")}', '${urlLink.replace(/'/g, "\\'")}')" class="btn-edit" style="${isTempMode ? 'pointer-events:none;opacity:0.4;' : ''}">✏️ تعديل</button>
-              <a href="/admin?action=delete&channel_name=${encodeURIComponent(name)}&password=${CONFIG.ADMIN_PASSWORD}" onclick="return confirm('حذف ${name}؟')" class="btn-delete" style="${isTempMode ? 'pointer-events:none;opacity:0.4;' : ''}">🗑️ حذف</a>
+          const shortUrl = urlLink.length > 50 ? urlLink.substring(0, 50) + '...' : urlLink;
+          channelsHtml += `<tr>
+            <td><strong>${name}</strong></td>
+            <td style="font-size:12px;color:#888;word-break:break-all">${shortUrl}</td>
+            <td style="text-align:center">
+              <button class="btn-small" onclick="editChannel('${name.replace(/'/g, "\\'")}', '${urlLink.replace(/'/g, "\\'")}')" ${isTempMode?'disabled':''}>تعديل</button>
+              <a href="/admin?action=delete&channel_name=${encodeURIComponent(name)}&password=${CONFIG.ADMIN_PASSWORD}" class="btn-small" onclick="return confirm('حذف؟')" ${isTempMode?'style=opacity:0.5;pointer-events:none':''}">حذف</a>
             </td>
           </tr>`;
         }
       }
 
       return new Response(`<!DOCTYPE html>
-      <html lang="ar" dir="rtl">
-      <head>
-        <title>لوحة التحكم - قنوات البث</title>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-          *{box-sizing:border-box;margin:0;padding:0}
-          body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;direction:rtl;background:#060911;color:#e6edf3;padding:24px 16px}
-          .container{max-width:1150px;margin:0 auto;background:#0d121d;border-radius:16px;padding:28px;border:1px solid #1a2336;box-shadow:0 15px 35px rgba(0,0,0,0.6)}
-          .header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid #1a2336}
-          .header h2{font-size:20px;font-weight:600;color:#f0f6fc}
-          .btn{display:inline-flex;align-items:center;justify-content:center;padding:9px 18px;border-radius:8px;border:1px solid transparent;font-size:13px;font-weight:500;cursor:pointer;text-decoration:none;color:#fff;transition:all 0.2s}
-          .btn:hover{opacity:0.9}
-          .btn-logout{background:#1f2937;border-color:#374151;color:#f0f6fc}
-          .btn-primary{background:#238636;color:#fff}
-          .btn-warning{background:#9e6a03;color:#fff}
-          .btn-info{background:#1f6feb;color:#fff}
-          .btn-sm{padding:7px 14px;font-size:12px}
-          .btn-edit{background:#1f6feb;border:none;color:#fff;padding:5px 12px;font-size:12px;border-radius:6px;cursor:pointer;margin-left:5px}
-          .btn-delete{background:#1f2937;border:1px solid #374151;color:#f85149;padding:5px 12px;font-size:12px;border-radius:6px;text-decoration:none;display:inline-block}
-          .toolbar{background:#111827;border-radius:10px;padding:14px 18px;margin:20px 0;display:flex;flex-wrap:wrap;gap:14px;align-items:center;border:1px solid #1a2336}
-          .form-box{background:#111827;border-radius:10px;padding:18px;margin:20px 0;border:1px solid #1a2336}
-          .form-box h3{font-size:14px;font-weight:600;color:#f0f6fc;margin-bottom:12px}
-          .form-inline{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
-          .form-inline input[type="text"], .form-inline input[type="url"]{flex:1 1 220px;padding:11px 16px;border-radius:8px;border:1px solid #1f2a40;background:#060911;color:#fff;font-size:13px}
-          .form-inline input[type="url"]{flex:2 1 320px}
-          .file-upload-box{display:flex;gap:12px;align-items:center;flex:2;background:#060911;padding:8px 12px;border:1px dashed #1f2a40;border-radius:8px;}
-          .file-upload-box input[type="file"]{color:#8b949e;font-size:13px;width:100%;cursor:pointer;}
-          .table-wrapper{overflow-x:auto;margin:20px 0;border-radius:10px;border:1px solid #1a2336}
-          table{width:100%;border-collapse:collapse;font-size:13px;min-width:550px}
-          th,td{padding:14px 16px;text-align:right;border-bottom:1px solid #1a2336}
-          th{background:#111827;color:#8b949e;font-weight:500}
-          .success{background:rgba(46,160,67,0.15);color:#3fb950;border:1px solid rgba(46,160,67,0.4);padding:12px 16px;border-radius:8px;margin:16px 0;font-size:13px;display:flex;align-items:center;gap:10px}
-          .error{background:rgba(248,81,73,0.15);color:#f85149;border:1px solid rgba(248,81,73,0.4);padding:12px 16px;border-radius:8px;margin:16px 0;font-size:13px;display:flex;align-items:center;gap:10px}
-          .badge{display:inline-block;padding:4px 12px;border-radius:12px;font-size:11px;background:rgba(187,128,9,0.2);color:#d29922;border:1px solid rgba(187,128,9,0.4)}
-          .footer-links{display:flex;flex-wrap:wrap;gap:22px;margin-top:24px;padding-top:18px;border-top:1px solid #1a2336;font-size:12px;color:#8b949e}
-          .footer-links a{color:#58a6ff;text-decoration:none}
-          .stats-box{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:20px 0}
-          .stat-item{background:#111827;padding:12px;border-radius:8px;border:1px solid #1a2336;text-align:center}
-          .stat-number{font-size:24px;font-weight:600;color:#3fb950}
-          .stat-label{font-size:11px;color:#8b949e;margin-top:4px}
-          code{background:#060911;padding:2px 6px;border-radius:4px;color:#79c0ff;font-size:11px}
-          .instructions{background:#111827;padding:12px;border-radius:8px;border-left:4px solid #1f6feb;font-size:12px;color:#8b949e;margin-bottom:12px}
-        </style>
-      </head>
-      <body>
-      <div class="container">
-        <div class="header">
-          <h2>⚙️ لوحة التحكم (${CONFIG.VERSION})</h2>
-          <a href="/admin?logout=true&password=${CONFIG.ADMIN_PASSWORD}" class="btn btn-logout">🚪 خروج</a>
-        </div>
-        
-        ${url.searchParams.get('success') ? `<div class="success">✅ ${url.searchParams.get('success')}</div>` : ''}
-        ${url.searchParams.get('error') ? `<div class="error">❌ ${url.searchParams.get('error')}</div>` : ''}
-        
-        <div class="stats-box">
-          <div class="stat-item">
-            <div class="stat-number">${channelNames.length}</div>
-            <div class="stat-label">قناة مسجلة</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-number">${isTempMode ? '🔴' : '🟢'}</div>
-            <div class="stat-label">${isTempMode ? 'وضع الحقوق' : 'وضع عادي'}</div>
-          </div>
-        </div>
-        
-        <div class="toolbar">
-          <span style="font-weight:500;font-size:13px;color:#8b949e;">🚨 وضع الطوارئ:</span>
-          <a href="/enable-rights?password=${CONFIG.ADMIN_PASSWORD}" onclick="return confirm('تفعيل وضع الحقوق؟')" class="btn btn-warning btn-sm" style="${isTempMode ? 'opacity:0.4;pointer-events:none;' : ''}">⚠️ تفعيل</a>
-          <a href="/restore-channels?password=${CONFIG.ADMIN_PASSWORD}" onclick="return confirm('استعادة القنوات الأصلية؟')" class="btn btn-info btn-sm" style="${!isTempMode ? 'opacity:0.4;pointer-events:none;' : ''}">♻️ استعادة</a>
-          ${isTempMode ? `<span class="badge">🔒 مفعل</span>` : ''}
-        </div>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>لوحة التحكم</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:system-ui;background:#060911;color:#e6edf3;padding:20px}
+    .container{max-width:1200px;margin:0 auto;background:#0d121d;border-radius:12px;padding:20px;border:1px solid #1a2336}
+    .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:15px;border-bottom:1px solid #1a2336}
+    h1{font-size:22px}
+    .btn-logout{background:#1f2937;padding:8px 16px;border-radius:6px;text-decoration:none;color:#fff;border:none;cursor:pointer}
+    .btn-logout:hover{background:#374151}
+    .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin:20px 0}
+    .stat{background:#111827;padding:12px;border-radius:8px;text-align:center;border:1px solid #1a2336}
+    .stat-num{font-size:28px;font-weight:bold;color:#3fb950}
+    .stat-label{font-size:12px;color:#888;margin-top:8px}
+    .success{background:rgba(46,160,67,0.15);color:#3fb950;border:1px solid rgba(46,160,67,0.4);padding:12px;border-radius:8px;margin:12px 0}
+    .error{background:rgba(248,81,73,0.15);color:#f85149;border:1px solid rgba(248,81,73,0.4);padding:12px;border-radius:8px;margin:12px 0}
+    .form-box{background:#111827;padding:16px;border-radius:8px;margin:20px 0;border:1px solid #1a2336}
+    .form-box h3{margin-bottom:12px;font-size:14px}
+    .form-group{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    input[type="text"],input[type="url"],input[type="file"]{flex:1;min-width:200px;padding:10px;border:1px solid #1f2a40;background:#060911;color:#fff;border-radius:6px;font-size:13px}
+    input[type="file"]{cursor:pointer}
+    .btn{padding:10px 20px;background:#238636;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600}
+    .btn:hover{background:#2ea043}
+    .btn:disabled{background:#444;cursor:not-allowed;opacity:0.5}
+    .btn-small{padding:5px 10px;background:#1f6feb;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;margin:0 2px}
+    .btn-small:hover{background:#388bfd}
+    .btn-small:disabled{opacity:0.5;cursor:not-allowed}
+    table{width:100%;border-collapse:collapse;margin:20px 0}
+    th,td{padding:12px;text-align:right;border-bottom:1px solid #1a2336}
+    th{background:#111827;color:#888;font-weight:600}
+    .upload-area{border:2px dashed #1f2a40;padding:20px;border-radius:8px;text-align:center;background:#060911}
+    .upload-area:hover{border-color:#388bfd;background:#0d121d}
+    .upload-area p{color:#888;margin:10px 0}
+    #uploadStatus{margin-top:10px;padding:10px;border-radius:6px;display:none}
+    #uploadStatus.success{background:rgba(46,160,67,0.2);color:#3fb950;border:1px solid rgba(46,160,67,0.4);display:block}
+    #uploadStatus.error{background:rgba(248,81,73,0.2);color:#f85149;border:1px solid rgba(248,81,73,0.4);display:block}
+    .instructions{background:#111827;padding:12px;border-left:4px solid #1f6feb;border-radius:6px;font-size:12px;color:#888;margin-bottom:12px}
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>⚙️ لوحة التحكم v${CONFIG.VERSION}</h1>
+    <form method="GET" action="/admin" style="display:inline">
+      <input type="hidden" name="logout" value="true">
+      <input type="hidden" name="password" value="${CONFIG.ADMIN_PASSWORD}">
+      <button class="btn-logout">🚪 خروج</button>
+    </form>
+  </div>
 
-        <div class="form-box" style="background:#161b22;">
-          <h3>📁 استيراد ملف M3U8 / M3U</h3>
-          <div class="instructions">
-            💡 <strong>تعليمات الاستيراد من الهاتف:</strong><br>
-            1️⃣ اختر ملف M3U أو M3U8 من الهاتف<br>
-            2️⃣ تأكد من أن الملف يحتوي على #EXTINF و الروابط<br>
-            3️⃣ اضغط "رفع واستيراد"
-          </div>
-          <form method="POST" action="/forced-import-m3u" enctype="multipart/form-data" class="form-inline">
-            <input type="hidden" name="password" value="${CONFIG.ADMIN_PASSWORD}">
-            <div class="file-upload-box">
-              <input type="file" name="m3u_file" accept=".m3u,.m3u8,.txt" required ${isTempMode ? 'disabled' : ''} onchange="showFileName(this)">
-            </div>
-            <button type="submit" class="btn btn-info" ${isTempMode ? 'disabled' : ''}>📤 رفع</button>
-          </form>
-          <p style="font-size:11px;color:#8b949e;margin-top:8px;" id="fileName"></p>
-        </div>
+  ${url.searchParams.get('success') ? `<div class="success">✅ ${decodeURIComponent(url.searchParams.get('success'))}</div>` : ''}
+  ${url.searchParams.get('error') ? `<div class="error">❌ ${decodeURIComponent(url.searchParams.get('error'))}</div>` : ''}
 
-        <div class="form-box">
-          <h3 id="formTitle">➕ إضافة قناة يدوياً</h3>
-          <form method="GET" action="/admin" class="form-inline" id="channelForm">
-            <input type="hidden" name="action" value="save">
-            <input type="hidden" name="password" value="${CONFIG.ADMIN_PASSWORD}">
-            <input type="hidden" name="old_name" id="old_name">
-            <input type="text" name="channel_name" id="channel_name" placeholder="اسم القناة" required ${isTempMode ? 'disabled' : ''}>
-            <input type="url" name="channel_url" id="channel_url" placeholder="https://..." required ${isTempMode ? 'disabled' : ''}>
-            <button type="submit" id="submitBtn" class="btn btn-primary" ${isTempMode ? 'disabled' : ''}>➕ إضافة</button>
-            <button type="button" onclick="resetForm()" id="cancelBtn" class="btn btn-logout" style="display:none;">❌ إلغاء</button>
-          </form>
-        </div>
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-num">${channelNames.length}</div>
+      <div class="stat-label">قناة</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">${isTempMode ? '🔴' : '🟢'}</div>
+      <div class="stat-label">${isTempMode ? 'وضع الحقوق' : 'وضع عادي'}</div>
+    </div>
+  </div>
 
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>📺 اسم القناة</th>
-                <th>🔗 رابط البث</th>
-                <th style="width:140px;text-align:center;">⚙️</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${channelsHtml}
-            </tbody>
-          </table>
-        </div>
+  <div class="form-box">
+    <h3>📤 رفع ملف M3U / M3U8</h3>
+    <div class="instructions">
+      💡 اختر ملف M3U أو M3U8 من جهازك ثم اضغط رفع
+    </div>
+    <div class="upload-area" id="uploadArea">
+      <input type="file" id="fileInput" accept=".m3u,.m3u8,.txt" style="display:none">
+      <p>👆 اضغط هنا لاختيار ملف أو اسحب الملف هنا</p>
+      <p style="font-size:12px;color:#666">الملف يجب أن يكون M3U أو M3U8</p>
+    </div>
+    <div id="uploadStatus"></div>
+    <div style="margin-top:12px">
+      <button class="btn" id="uploadBtn" onclick="uploadFile()" ${isTempMode?'disabled':''}>📤 رفع الملف</button>
+    </div>
+  </div>
 
-        <div class="footer-links">
-          <div>📥 <a href="/export-m3u?password=${CONFIG.ADMIN_PASSWORD}">⬇️ تحميل M3U المعدل</a></div>
-          <div>🏥 <a href="/health" target="_blank">فحص النظام</a></div>
-        </div>
+  <div class="form-box">
+    <h3>➕ إضافة قناة يدوياً</h3>
+    <form method="GET" action="/admin">
+      <input type="hidden" name="action" value="save">
+      <input type="hidden" name="password" value="${CONFIG.ADMIN_PASSWORD}">
+      <input type="hidden" name="old_name" id="old_name">
+      <div class="form-group">
+        <input type="text" name="channel_name" id="channel_name" placeholder="اسم القناة" required ${isTempMode?'disabled':''}>
+        <input type="url" name="channel_url" id="channel_url" placeholder="https://..." required ${isTempMode?'disabled':''}>
+        <button type="submit" class="btn" ${isTempMode?'disabled':''}>إضافة</button>
+        <button type="button" class="btn" style="background:#666" onclick="resetForm()" id="cancelBtn" style="display:none">إلغاء</button>
       </div>
+    </form>
+  </div>
 
-      <script>
-        function showFileName(input) {
-          const fileName = input.files[0]?.name || '';
-          document.getElementById('fileName').textContent = fileName ? '✓ تم اختيار: ' + fileName : '';
-        }
+  <table>
+    <thead>
+      <tr>
+        <th>📺 القناة</th>
+        <th>🔗 الرابط</th>
+        <th style="width:120px">إجراء</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${channelsHtml}
+    </tbody>
+  </table>
 
-        function editChannel(name, urlLink) {
-          document.getElementById('old_name').value = name;
-          document.getElementById('channel_name').value = name;
-          document.getElementById('channel_url').value = urlLink;
-          document.getElementById('formTitle').innerText = '✏️ تعديل';
-          document.getElementById('submitBtn').innerText = '💾 حفظ';
-          document.getElementById('cancelBtn').style.display = 'inline-flex';
-          window.scrollTo({top: 400, behavior: 'smooth'});
-        }
-        
-        function resetForm() {
-          document.getElementById('old_name').value = '';
-          document.getElementById('channel_name').value = '';
-          document.getElementById('channel_url').value = '';
-          document.getElementById('formTitle').innerText = '➕ إضافة قناة يدوياً';
-          document.getElementById('submitBtn').innerText = '➕ إضافة';
-          document.getElementById('cancelBtn').style.display = 'none';
-        }
-      </script>
-      </body>
-      </html>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+  <div style="margin-top:20px;padding-top:20px;border-top:1px solid #1a2336;color:#888;font-size:12px">
+    <p>📥 <a href="/export-m3u?password=${CONFIG.ADMIN_PASSWORD}" style="color:#58a6ff">تحميل ملف M3U المعدل</a></p>
+  </div>
+</div>
+
+<script>
+const fileInput = document.getElementById('fileInput');
+const uploadArea = document.getElementById('uploadArea');
+const uploadBtn = document.getElementById('uploadBtn');
+const uploadStatus = document.getElementById('uploadStatus');
+
+uploadArea.addEventListener('click', () => fileInput.click());
+uploadArea.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  uploadArea.style.borderColor = '#388bfd';
+});
+uploadArea.addEventListener('dragleave', () => {
+  uploadArea.style.borderColor = '#1f2a40';
+});
+uploadArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadArea.style.borderColor = '#1f2a40';
+  const files = e.dataTransfer.files;
+  if (files.length > 0) {
+    fileInput.files = files;
+    uploadFile();
+  }
+});
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length > 0) {
+    uploadFile();
+  }
+});
+
+async function uploadFile() {
+  const file = fileInput.files[0];
+  if (!file) {
+    showStatus('اختر ملف أولاً', 'error');
+    return;
+  }
+
+  uploadStatus.textContent = '⏳ جاري الرفع...';
+  uploadStatus.className = '';
+  uploadStatus.style.display = 'block';
+  uploadBtn.disabled = true;
+
+  const formData = new FormData();
+  formData.append('m3u_file', file);
+  formData.append('password', '${CONFIG.ADMIN_PASSWORD}');
+
+  try {
+    const response = await fetch('/upload-api?password=${CONFIG.ADMIN_PASSWORD}', {
+      method: 'POST',
+      body: formData
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      showStatus('✅ تم استيراد ' + data.count + ' قناة بنجاح!', 'success');
+      fileInput.value = '';
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      showStatus('❌ ' + (data.error || 'خطأ'), 'error');
+    }
+  } catch (e) {
+    showStatus('❌ خطأ في الاتصال: ' + e.message, 'error');
+  } finally {
+    uploadBtn.disabled = false;
+  }
+}
+
+function showStatus(msg, type) {
+  uploadStatus.textContent = msg;
+  uploadStatus.className = type;
+  uploadStatus.style.display = 'block';
+}
+
+function editChannel(name, url) {
+  document.getElementById('old_name').value = name;
+  document.getElementById('channel_name').value = name;
+  document.getElementById('channel_url').value = url;
+  document.getElementById('cancelBtn').style.display = 'inline-block';
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function resetForm() {
+  document.getElementById('old_name').value = '';
+  document.getElementById('channel_name').value = '';
+  document.getElementById('channel_url').value = '';
+  document.getElementById('cancelBtn').style.display = 'none';
+}
+</script>
+</body>
+</html>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
     } catch (error) {
-      console.error('Dashboard error:', error);
-      return new Response("❌ خطأ في تحميل لوحة التحكم", { 
-        status: 500,
-        headers: { "Content-Type": "text/plain; charset=utf-8" }
-      });
+      return new Response("❌ خطأ", { status: 500 });
     }
   }
 };
